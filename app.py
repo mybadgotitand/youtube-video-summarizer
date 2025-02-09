@@ -2,12 +2,11 @@ import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from transformers import pipeline
 import re
-import requests
-from moviepy.editor import VideoFileClip
-import tempfile
+import yt_dlp
 import os
-from pydub import AudioSegment
 import speech_recognition as sr
+from pydub import AudioSegment
+import tempfile
 
 # Function to summarize text
 def summarize_text(text, max_length=5000):
@@ -30,12 +29,24 @@ def extract_video_id(url):
             break
     return video_id
 
-# Function to download the video audio
-def download_video_audio(video_url):
-    # This function will download the audio of the video from YouTube using an external tool or API
-    # You can use `yt-dlp` or similar tools to download the video/audio
-    # Placeholder logic for the sake of example
-    pass
+# Function to download audio from YouTube video using yt-dlp
+def download_audio(video_url):
+    ydl_opts = {
+        'format': 'bestaudio/best',  # Download the best audio format
+        'outtmpl': 'downloaded_audio.%(ext)s',  # Output template for the downloaded audio
+        'postprocessors': [{
+            'key': 'FFmpegAudioConvertor',  # Convert to a supported audio format (e.g., .wav)
+            'preferredcodec': 'wav',
+            'preferredquality': '192',
+        }],
+        'quiet': True
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(video_url, download=True)
+        audio_file = ydl.prepare_filename(info_dict)
+        audio_file = os.path.splitext(audio_file)[0] + '.wav'
+        return audio_file
 
 # Function to transcribe audio to text using speech recognition
 def transcribe_audio_to_text(audio_file):
@@ -78,17 +89,16 @@ def main():
                 st.write("Transcript not available, attempting to summarize from audio or metadata.")
                 
                 # Download audio and transcribe it if no transcript is available
-                # You can implement an actual video-to-audio downloader here
-                # e.g., `download_video_audio(video_url)`
-                
-                audio_text = "This is where the transcribed text from audio would go."
-                # Perform transcription (replace with actual transcription logic)
-                # audio_text = transcribe_audio_to_text('path_to_audio_file.wav')
+                audio_file = download_audio(video_url)
+                st.write(f"Audio downloaded: {audio_file}")
 
-                if audio_text == "This is where the transcribed text from audio would go.":
-                    # If no transcription was performed, try to use metadata
-                    video_metadata = "Video metadata summary based on title and description."  # Placeholder
-                    video_text = video_metadata
+                # Perform transcription
+                audio_text = transcribe_audio_to_text(audio_file)
+                if audio_text:
+                    video_text = audio_text
+
+                # Clean up downloaded audio file
+                os.remove(audio_file)
 
             # Summarize the transcript or audio text
             summary = summarize_text(video_text, max_length=max_summary_length)
