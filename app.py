@@ -34,19 +34,24 @@ def download_audio(video_url):
     ydl_opts = {
         'format': 'bestaudio/best',  # Download the best audio format
         'outtmpl': 'downloaded_audio.%(ext)s',  # Output template for the downloaded audio
-        'postprocessors': [{
-            'key': 'FFmpegAudioConvertor',  # Convert to a supported audio format (e.g., .wav)
-            'preferredcodec': 'wav',
-            'preferredquality': '192',
-        }],
         'quiet': True
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(video_url, download=True)
         audio_file = ydl.prepare_filename(info_dict)
-        audio_file = os.path.splitext(audio_file)[0] + '.wav'
+        audio_file = os.path.splitext(audio_file)[0] + '.mp3'  # Use .mp3 format instead of .wav
         return audio_file
+
+# Function to convert audio to WAV using pydub (if required)
+def convert_to_wav(audio_file):
+    try:
+        sound = AudioSegment.from_mp3(audio_file)  # If the file is mp3
+        wav_file = audio_file.replace('.mp3', '.wav')  # Change the extension to .wav
+        sound.export(wav_file, format="wav")
+        return wav_file
+    except Exception as e:
+        return None
 
 # Function to transcribe audio to text using speech recognition
 def transcribe_audio_to_text(audio_file):
@@ -89,16 +94,31 @@ def main():
                 st.write("Transcript not available, attempting to summarize from audio or metadata.")
                 
                 # Download audio and transcribe it if no transcript is available
-                audio_file = download_audio(video_url)
-                st.write(f"Audio downloaded: {audio_file}")
+                try:
+                    audio_file = download_audio(video_url)
+                    st.write(f"Audio downloaded: {audio_file}")
 
-                # Perform transcription
-                audio_text = transcribe_audio_to_text(audio_file)
-                if audio_text:
-                    video_text = audio_text
-
-                # Clean up downloaded audio file
-                os.remove(audio_file)
+                    # Convert to .wav if necessary
+                    wav_file = convert_to_wav(audio_file)
+                    if wav_file:
+                        st.write(f"Audio converted to WAV: {wav_file}")
+                        # Perform transcription
+                        audio_text = transcribe_audio_to_text(wav_file)
+                        if audio_text:
+                            video_text = audio_text
+                        else:
+                            st.error("Failed to transcribe audio.")
+                    
+                        # Clean up downloaded audio file
+                        os.remove(wav_file)
+                    else:
+                        st.error("Failed to convert audio to WAV.")
+                    
+                    # Clean up downloaded .mp3 file
+                    os.remove(audio_file)
+                except Exception as e:
+                    st.error(f"Error during audio download or transcription: {str(e)}")
+                    return
 
             # Summarize the transcript or audio text
             summary = summarize_text(video_text, max_length=max_summary_length)
